@@ -145,7 +145,21 @@ app.get('/classes/:id', async (req, res) => {
     const classe = await Classe.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(classe);
   });
-  
+  // Route pour la recherche de classes par niveau
+app.get('/classes/search', async (req, res) => {
+  try {
+    const searchNiveau = req.query.niveau;
+
+    // Utilisation du niveau fourni pour la recherche
+    const result = await Classe.find({ niveau: searchNiveau });
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la recherche des classes.' });
+  }
+});
+
   app.delete('/classes/:id', async (req, res) => {
     const classe = await Classe.findByIdAndRemove(req.params.id);
     res.json(classe);

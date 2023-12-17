@@ -73,6 +73,7 @@ client.on('started', () => {
 const matiereSchema = new mongoose.Schema({
   nom: String,
   description: String,
+  classes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Classe' }],
 });
 
 const Matiere = mongoose.model('Matiere', matiereSchema);
@@ -81,61 +82,183 @@ const Matiere = mongoose.model('Matiere', matiereSchema);
 const classeSchema = new mongoose.Schema({
   nom: String,
   niveau: Number,
+  matieres: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Matiere' }],
 });
 
 const Classe = mongoose.model('Classe', classeSchema);
 
+
+const classMatiereSchema = new mongoose.Schema({
+  classeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Classe' },
+  matiereId: { type: mongoose.Schema.Types.ObjectId, ref: 'Matiere' },
+  // Autres propriétés de la table d'association si nécessaire
+});
+
+const ClassMatiere = mongoose.model('ClassMatiere', classMatiereSchema);
+// Create a new association between Classe and Matiere
+app.post('/classMatieres', async (req, res) => {
+  try {
+    const { classeId, matiereId } = req.body;
+    const classMatiere = new ClassMatiere({ classeId, matiereId });
+    const savedClassMatiere = await classMatiere.save();
+    res.json(savedClassMatiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la création de l\'association.' });
+  }
+});
+// Get all associations between Classe and Matiere
+app.get('/classMatieres', async (req, res) => {
+  try {
+    const allClassMatieres = await ClassMatiere.find();
+    res.json(allClassMatieres);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la récupération des associations.' });
+  }
+});
+// Get a specific association by ID
+app.get('/classMatieres/:id', async (req, res) => {
+  try {
+    const classMatiere = await ClassMatiere.findById(req.params.id);
+    res.json(classMatiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la récupération de l\'association.' });
+  }
+});
+// Update an association by ID
+app.put('/classMatieres/:id', async (req, res) => {
+  try {
+    const { classeId, matiereId } = req.body;
+    const updatedClassMatiere = await ClassMatiere.findByIdAndUpdate(
+      req.params.id,
+      { classeId, matiereId },
+      { new: true }
+    );
+    res.json(updatedClassMatiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la mise à jour de l\'association.' });
+  }
+});
+// Delete an association by ID
+app.delete('/classMatieres/:id', async (req, res) => {
+  try {
+    const deletedClassMatiere = await ClassMatiere.findByIdAndRemove(req.params.id);
+    res.json(deletedClassMatiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la suppression de l\'association.' });
+  }
+});
+
+module.exports = ClassMatiere;
 // Middleware pour parser le corps des requêtes en JSON
 app.use(bodyParser.json());
 
+
+// Get matieres with associated classes
 app.get('/matieres', async (req, res) => {
-  const matieres = await Matiere.find();
-  res.json(matieres);
-});
-
-app.post('/matieres', async (req, res) => {
-  const nouvelleMatiere = new Matiere(req.body);
-  const matiereEnregistree = await nouvelleMatiere.save();
-  res.json(matiereEnregistree);
-});
-app.get('/matieres/:id', async (req, res) => {
-    const matiere = await Matiere.findById(req.params.id);
-    res.json(matiere);
-  });
-  
-  app.put('/matieres/:id', async (req, res) => {
-    const matiere = await Matiere.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json(matiere);
-  });
-  
-  app.delete('/matieres/:id', async (req, res) => {
-    const matiere = await Matiere.findByIdAndRemove(req.params.id);
-    res.json(matiere);
-  });
-// Route pour la recherche de matières par nom
-app.get('/matieres/search', async (req, res) => {
   try {
-    const searchTerm = req.query.nom;
-
-    // Utilisation d'une expression régulière insensible à la casse pour la recherche
-    const result = await Matiere.find({ nom: { $regex: new RegExp(searchTerm, 'i') } });
-
-    res.json(result);
+    const matieres = await Matiere.find().populate('classes');
+    res.json(matieres);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Erreur lors de la recherche des matières.' });
+    res.status(500).json({ error: 'Erreur lors de la récupération des matières.' });
   }
 });
+
+// Create a new Matiere and associate with classes
+// Create a new Matiere and associate with classes
+app.post('/matieres', async (req, res) => {
+  try {
+    const nouvelleMatiere = new Matiere(req.body);
+    const matiereEnregistree = await nouvelleMatiere.save();
+
+    // Assuming req.body.classes is an array of class IDs to associate with the matiere
+    const classeIds = req.body.classes || [];
+    
+    // Create an array to store the associations
+    const associations = [];
+
+    // Loop through each class ID and create an association
+    await Promise.all(classeIds.map(async (classeId) => {
+      const classMatiere = new ClassMatiere({ classeId, matiereId: matiereEnregistree._id });
+      await classMatiere.save();
+      associations.push(classMatiere);
+    }));
+
+    // Send the matiereEnregistree and associations in the response
+    res.json({ matiere: matiereEnregistree, associations });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la création de la matière.' });
+  }
+});
+
+// Get a matiere with associated classes
+app.get('/matieres/:id', async (req, res) => {
+  try {
+    const matiere = await Matiere.findById(req.params.id).populate('classes');
+    res.json(matiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la récupération de la matière.' });
+  }
+});
+
+// Update a matiere
+app.put('/matieres/:id', async (req, res) => {
+  try {
+    const matiere = await Matiere.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(matiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la mise à jour de la matière.' });
+  }
+});
+
+// Delete a matiere
+app.delete('/matieres/:id', async (req, res) => {
+  try {
+    const matiere = await Matiere.findByIdAndRemove(req.params.id);
+
+    // Remove associated entries in ClassMatiere
+    await ClassMatiere.deleteMany({ matiereId: req.params.id });
+
+    res.json(matiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la suppression de la matière.' });
+  }
+});
+
 app.get('/classes', async (req, res) => {
   const classes = await Classe.find();
   res.json(classes);
 });
 
+// Create a new Classe and associate with matieres
 app.post('/classes', async (req, res) => {
-  const nouvelleClasse = new Classe(req.body);
-  const classeEnregistree = await nouvelleClasse.save();
-  res.json(classeEnregistree);
+  try {
+    const nouvelleClasse = new Classe(req.body);
+    const classeEnregistree = await nouvelleClasse.save();
+
+    // Assuming req.body.matieres is an array of matiere IDs to associate with the classe
+    const matiereIds = req.body.matieres || [];
+    await Promise.all(matiereIds.map(async (matiereId) => {
+      const classMatiere = new ClassMatiere({ classeId: classeEnregistree._id, matiereId });
+      await classMatiere.save();
+    }));
+
+    res.json(classeEnregistree);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erreur lors de la création de la classe.' });
+  }
 });
+
 app.get('/classes/:id', async (req, res) => {
     const classe = await Classe.findById(req.params.id);
     res.json(classe);
@@ -145,21 +268,7 @@ app.get('/classes/:id', async (req, res) => {
     const classe = await Classe.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(classe);
   });
-  // Route pour la recherche de classes par niveau
-app.get('/classes/search', async (req, res) => {
-  try {
-    const searchNiveau = req.query.niveau;
-
-    // Utilisation du niveau fourni pour la recherche
-    const result = await Classe.find({ niveau: searchNiveau });
-
-    res.json(result);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Erreur lors de la recherche des classes.' });
-  }
-});
-
+  
   app.delete('/classes/:id', async (req, res) => {
     const classe = await Classe.findByIdAndRemove(req.params.id);
     res.json(classe);

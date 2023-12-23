@@ -35,8 +35,15 @@ function generateAuthToken(user) {
     return token;
 }
 // Connexion à MongoDB
-mongoose.connect('mongodb://localhost:27017/Education', { useNewUrlParser: true, useUnifiedTopology: true });
-
+mongoose.connect('mongodb://127.0.0.1:27017/Education', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+}).then(() => {
+    console.log('Connecté à la base de données MongoDB');
+}).catch(err => {
+    console.error('Erreur de connexion à la base de données :', err);
+    process.exit(1);
+});
 // Configuration d'Eureka Client
 const client = new Eureka({
     instance: {
@@ -95,6 +102,16 @@ const classMatiereSchema = new mongoose.Schema({
 });
 
 const ClassMatiere = mongoose.model('ClassMatiere', classMatiereSchema);
+//cours et matiere
+app.get('/:id', async (req, res) => {
+  try {
+    const matiere = await Matiere.findById(req.params.id);
+    res.json(matiere);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Erreur lors de la récupération de la matiere' });
+  }
+});
 // Create a new association between Classe and Matiere
 app.post('/classMatieres', async (req, res) => {
   try {
@@ -108,7 +125,7 @@ app.post('/classMatieres', async (req, res) => {
   }
 });
 // Get all associations between Classe and Matiere
-app.get('/classMatieres', async (req, res) => {
+app.get('/classMatieres/clasMat', async (req, res) => {
   try {
     const allClassMatieres = await ClassMatiere.find();
     res.json(allClassMatieres);
@@ -159,7 +176,7 @@ app.use(bodyParser.json());
 
 
 // Get matieres with associated classes
-app.get('/matieres', async (req, res) => {
+app.get('/matieres/mat', async (req, res) => {
   try {
     const matieres = await Matiere.find().populate('classes');
     res.json(matieres);
@@ -234,7 +251,7 @@ app.delete('/matieres/:id', async (req, res) => {
   }
 });
 
-app.get('/classes', async (req, res) => {
+app.get('/classes/clas', async (req, res) => {
   const classes = await Classe.find();
   res.json(classes);
 });

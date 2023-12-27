@@ -77,6 +77,15 @@ client.start();
 client.on('started', () => {
     console.log('Service enregistré avec succès auprès d\'Eureka.');
 });
+const enseignantSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  role: { type: String, default: 'enseignant' },
+  matiere: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Matiere' }]
+});
+
+const Enseignant = mongoose.model('Enseignant', enseignantSchema);
 const matiereSchema = new mongoose.Schema({
   nom: String,
   description: String,
@@ -84,11 +93,17 @@ const matiereSchema = new mongoose.Schema({
 });
 
 const Matiere = mongoose.model('Matiere', matiereSchema);
+const profClassSchema = new mongoose.Schema({
+  idprof: { type: mongoose.Schema.Types.ObjectId, ref: 'Enseignant' },
+  idclass: { type: mongoose.Schema.Types.ObjectId, ref: 'Classe' },
+});
 
+const ProfClass = mongoose.model('ProfClass', profClassSchema);
 // Définition du schéma pour Classe
 const classeSchema = new mongoose.Schema({
   nom: String,
   niveau: Number,
+  cours: [{type: String,ref: 'Cours'}],
   matieres: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Matiere' }],
 });
 
@@ -290,8 +305,123 @@ app.get('/classes/:id', async (req, res) => {
     const classe = await Classe.findByIdAndRemove(req.params.id);
     res.json(classe);
   });
+  app.get('/enseignants/matieres/:id', async (req, res) => {
+    const enseignantId = req.params.id;
   
+    try {
+      const enseignant = await Enseignant.findById(enseignantId).populate('matiere');
+  
+      if (!enseignant) {
+        return res.status(404).json({ message: 'Enseignant non trouvé' });
+      }
+  
+      res.json(enseignant.matiere); // Utilisez "matieres" au lieu de "matiere"
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Erreur serveur lors de la récupération des données' });
+    }
+  });
+  app.get('/classes/enseignants/:id', async (req, res) => {
+    const enseignantId = req.params.id;
+    try {
+      const profClasses = await ProfClass.find({ idprof: enseignantId }).populate('idclass'); // Utilisez "idclass" pour la référence à la classe
+  
+      if (!profClasses || profClasses.length === 0) {
+        return res.status(404).json({ message: 'Enseignant non trouvé ou aucune classe associée' });
+      }
+  
+      const classes = profClasses.map(pc => pc.idclass); // Récupérez seulement les classes
+  
+      res.json(classes);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Erreur serveur lors de la récupération des données' });
+    }
+  });
+  app.get('/classes/matiere/:id', async (req, res)=>{
+    const classeId = req.params.id;
 
+    try {
+      const classMatieres = await ClassMatiere.find({ classeId: classeId }).populate('matiereId'); 
+  
+      if (!classMatieres || classMatieres.length === 0) {
+        return res.status(404).json({ message: 'Aucune matière trouvée pour cette classe' });
+      }
+  
+      const matieres = classMatieres.map(cm => cm.matiereId);
+  
+      res.json(matieres);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Erreur serveur lors de la récupération des données' });
+    }
+  });
+  app.get('/matieres-communes/:classeId/:enseignantId', async (req, res) => {
+    const classeId = req.params.classeId;
+    const enseignantId = req.params.enseignantId;
+  
+    try {
+      const matieresDeClasse = await ClassMatiere.find({ classeId: classeId }).select('matiereId');
+
+      // Trouver toutes les matières associées à l'enseignant
+      const matieresDeEnseignant = await Enseignant.findById(enseignantId).select('matiere');
+  
+      // Trouver les matières communes
+      const matieresCommunes = matieresDeClasse.filter(matiereClasse => 
+        matieresDeEnseignant.matiere.includes(matiereClasse.matiereId.toString())
+      );
+      const matieresCommunesDetails = await Matiere.find({
+        _id: { $in: matieresCommunes.map(m => m.matiereId) }
+      });
+      console.log("Classe ID:", classeId);
+      console.log("Enseignant ID:", enseignantId);
+      console.log("Matieres de Classe:", matieresDeClasse);
+      console.log("Matieres Communes:", matieresCommunes);
+  
+      // Renvoyer les matières communes au client
+      res.json(matieresCommunesDetails);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Erreur serveur lors de la récupération des données' });
+    }
+  });
+app.post('/lier-cours',async (req, res) => {
+  try {
+      const { classeId, coursId } = req.body;
+
+      const classe = await Classe.findById(classeId);
+      if (!classe) {
+          return res.status(404).json({ error: 'Classe non trouvée' });
+      }
+
+      classe.cours.push(coursId);
+      await classe.save();
+
+      res.status(200).json({ message: 'Cours lié avec succès à la classe' });
+  } catch (error) {
+      res.status(500).json({ error: 'Erreur lors de la liaison du cours à la classe', details: error.message });
+  }
+});
+//lier cours et classe en utilise axios
+//   exports.lierCours = async (req, res) => {
+//     try {
+//         const { classeId, coursId } = req.body;
+
+//         const classe = await Classe.findById(classeId);
+//         if (!classe) {
+//             return res.status(404).json({ error: 'Classe non trouvée' });
+//         }
+
+//         classe.cours.push(coursId);
+//         await classe.save();
+
+//         res.status(200).json({ message: 'Cours lié avec succès à la classe' });
+//     } catch (error) {
+//         res.status(500).json({ error: 'Erreur lors de la liaison du cours à la classe', details: error.message });
+//     }
+// };
+
+//   app.post('/lier-cours', classeController.lierCours);
   app.listen(PORT, () => {
     console.log(`Serveur en cours d'écoute sur le port ${PORT}`);
 });
